@@ -24,3 +24,7 @@ license, plus development scaffolding derived from third-party projects.
 No Minecraft assets (textures, sounds, language files) are copied into this
 repository. The test block/item models reference vanilla texture paths at
 runtime instead of shipping copies.
+
+## Codex plugin dependencies
+
+The Codex bundle includes the MCP TypeScript SDK, Ajv, and their bundled runtime dependencies. Complete dependency versions and license texts are generated into `plugins/minecraft-mod-dev/THIRD_PARTY_LICENSES.txt`. esbuild is used for packaging and is not required at runtime.

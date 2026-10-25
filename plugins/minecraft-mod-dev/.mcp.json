@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "minecraft": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/server.cjs"
+      ],
+      "cwd": "${PLUGIN_ROOT}",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 1200
+    }
+  }
+}

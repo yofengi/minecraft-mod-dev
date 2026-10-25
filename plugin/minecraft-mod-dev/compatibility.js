@@ -221,8 +221,8 @@ export function gradleInvocation(projectDir, task, javaHome) {
     env[pathKey] = `${join(javaHome, 'bin')}${oldPath ? delimiter + oldPath : ''}`;
   }
   return {
-    command: win ? `gradlew.bat ${task} --console=plain` : './gradlew',
-    args: win ? [] : [task, '--console=plain'],
+    command: win ? `gradlew.bat ${task} --console=plain --no-daemon` : './gradlew',
+    args: win ? [] : [task, '--console=plain', '--no-daemon'],
     options: { cwd: projectDir, env, shell: win, windowsHide: true },
   };
 }

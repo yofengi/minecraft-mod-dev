@@ -1,0 +1,19 @@
+{
+  "name": "minecraft-mod-dev-workspace",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "build": "node scripts/build-codex.mjs",
+    "pretest": "npm run build",
+    "test": "node --test plugin/minecraft-mod-dev/test/*.test.js test/*.test.mjs",
+    "test:mcp": "node --test test/*.test.mjs",
+    "package": "npm run build && python scripts/package-release.py"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "ajv": "8.20.0",
+    "esbuild": "0.28.2"
+  }
+}

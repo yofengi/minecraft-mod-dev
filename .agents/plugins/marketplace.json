@@ -1,0 +1,12 @@
+{
+  "name": "minecraft-mod-dev-plugins",
+  "interface": { "displayName": "Minecraft Mod Development" },
+  "plugins": [
+    {
+      "name": "minecraft-mod-dev",
+      "source": { "source": "local", "path": "./plugins/minecraft-mod-dev" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

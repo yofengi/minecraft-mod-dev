@@ -2,9 +2,9 @@
 
 > **此 fork：Minecraft 26.1.2 / Forge + NeoForge**
 >
-> 在原版 Forge 1.20.1 工具链之外，新增 Java 25 的 Forge 64.1.5、NeoForge 26.1.2.114 探针，共享同一组 HTTP 工具接口。新版插件为 **0.6.0**。
+> 在原版 Forge 1.20.1 工具链之外，新增 Java 25 的 Forge 64.1.5、NeoForge 26.1.2.114 探针，共享同一组 HTTP 工具接口。新版插件为 **0.7.0**。
 >
-> **下载本 fork 的 [v0.6.0 发布包](https://github.com/yofengi/minecraft-mod-dev/releases/tag/v0.6.0)，构建、安装与验证请看 [26.1.2 使用说明](docs/MINECRAFT-26.1.2.md)**。下面保留上游 0.5.1 / Forge 1.20.1 的介绍和历史测试记录；其中的 `*-dev.jar`、Java 17 和 Mixin 限制仅适用于旧版工程。
+> **已支持 Codex：[安装与使用](docs/CODEX.md) · [v0.7.0 发布包](https://github.com/yofengi/minecraft-mod-dev/releases/tag/v0.7.0)**。Codex 与 DSH 共享 14 个工具和游戏探针。Minecraft 26.1.2 的构建、安装与验证请看 [26.1.2 使用说明](docs/MINECRAFT-26.1.2.md)。下面保留上游 0.5.1 / Forge 1.20.1 的介绍和历史测试记录；其中的 `*-dev.jar`、Java 17 和 Mixin 限制仅适用于旧版工程。
 
 ![minecraft-mod-dev banner](docs/assets/banner.png)
 

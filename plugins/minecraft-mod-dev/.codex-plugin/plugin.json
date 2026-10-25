@@ -1,0 +1,29 @@
+{
+  "name": "minecraft-mod-dev",
+  "version": "0.7.0",
+  "description": "Build and test Minecraft mods using local Forge and NeoForge probes.",
+  "author": {
+    "name": "yofengi",
+    "url": "https://github.com/yofengi"
+  },
+  "repository": "https://github.com/yofengi/minecraft-mod-dev",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "Minecraft Mod Dev",
+    "shortDescription": "Forge / NeoForge 模组开发与游戏内验证",
+    "developerName": "yofengi",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/yofengi/minecraft-mod-dev",
+    "defaultPrompt": [
+      "检查当前 Minecraft 模组工程，并连接本地探针进行验证。"
+    ],
+    "composerIcon": "./assets/icon.svg"
+  }
+}

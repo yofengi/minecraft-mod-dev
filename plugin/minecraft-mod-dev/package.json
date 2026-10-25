@@ -1,6 +1,6 @@
 {
   "name": "minecraft-mod-dev",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Minecraft mod development harness for Forge 1.20.1 and Forge/NeoForge 26.1.2",
   "type": "module",
@@ -10,10 +10,12 @@
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
-    "./presets/*.patch.yml": "./presets/*.patch.yml"
+    "./presets/*.patch.yml": "./presets/*.patch.yml",
+    "./core.js": "./core.js"
   },
   "files": [
     "index.js",
+    "core.js",
     "compatibility.js",
     "cordis.patch.yml",
     "presets/*.patch.yml",
