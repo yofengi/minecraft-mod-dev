@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'net.minecraftforge.gradle' version '7.0.17'
+}
+
+version = '0.2.0'
+group = 'com.mcdev.probe'
+base.archivesName = 'mcdev_probe-forge-26.1.2'
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+sourceSets.main.java.srcDir '../mcdev-probe-26.1.2-common/src/main/java'
+sourceSets.main.output.resourcesDir = layout.buildDirectory.dir('classes/java/main').get().asFile
+sourceSets {
+    regression {
+        java.srcDir '../mcdev-probe-26.1.2-common/src/test/java'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+minecraft {
+    runs {
+        register('client') { workingDir = layout.projectDirectory.dir('run-client') }
+        register('server') {
+            workingDir = layout.projectDirectory.dir('run-server')
+            args '--nogui'
+        }
+        register('gameTestServer') { workingDir = layout.projectDirectory.dir('run-gametest') }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+}
+dependencies {
+    implementation minecraft.dependency('net.minecraftforge:forge:26.1.2-64.1.5')
+}
+tasks.named('jar', Jar) {
+    manifest.attributes('Mcdev-Loader': 'forge', 'Mcdev-Minecraft-Version': '26.1.2', 'Mcdev-Mappings': 'official')
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.register('regressionTest', JavaExec) {
+    dependsOn tasks.named('regressionClasses')
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.mcdev.probe.IngredientAssignmentTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn tasks.named('regressionTest') }

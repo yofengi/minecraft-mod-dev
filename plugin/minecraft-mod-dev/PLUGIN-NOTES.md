@@ -1,4 +1,19 @@
-# minecraft-mod-dev plugin v0.5.1
+# minecraft-mod-dev plugin v0.6.0
+
+## v0.6.0（2026-10-25）
+
+- 保留 Forge 1.20.1 的 `*-dev.jar` 和 `MixinConfigs` 校验。
+- 支持 Forge / NeoForge 26.1.2 的官方映射探针；文件名、manifest 的 `Mcdev-Loader` / `Mcdev-Minecraft-Version` / `Mcdev-Mappings` 和对应模组描述文件必须匹配。
+- `mcdev_install_probe` 新增可选 `loader`、`minecraftVersion`。读取实例目录内同名的基础版本 JSON 推断目标，显式参数与实例元数据都必须兼容。不会读取账号配置；未知目标通过 `warnings` 提示补全参数。
+- 所有目标先检查再复制；遇到其他文件名的探针会拒绝，提示手动移除。允许覆盖同名探针，不删除其他模组。
+- `mcdev_build`、`mcdev_prepare`、`mcdev_gametest` 新增可选 `javaHome`，只为子进程设置 `JAVA_HOME` 和 `PATH`，检查 JDK 的 `java`、`javac` 和项目 wrapper 路径。
+- `mcdev_scenario` 新增可选 `minecraftVersion`，优先于卡片的同名字段。`dryRun` 未指定时固定使用 1.20.1；实际运行卡片或 item 步骤时可读取服务端 `/status` 推断，推断失败会警告并回退到 1.20.1。
+- 卡片 `give` / `select_item` 支持字符串 `components`（可带外围 `[]`）；1.20.1 拒绝此字段。`give` 即使不选中物品也保留 `nbt`，26.1.2 将旧式 `nbt` 放入 `minecraft:custom_data`；原版耐久等数据应通过 `components: 'minecraft:damage=3'` 设置。
+- `item` 步骤和 `item_bar` 断言转发 components；同时提供 `nbt` 和 components 内的 `custom_data` 会报错，避免互相覆盖。
+- JAR 元数据由 Node 直接读取，不再依赖 PATH 中的 `jar`，校验失败不会降级为未验证安装。
+- 回归测试：在插件目录运行 `npm test`（测试需要支持 `module.registerHooks` 的 Node 22.15+ 或 24+）。
+
+## v0.5.1 历史记录
 
 日期：2026-10-18
 位置：`plugin/minecraft-mod-dev`
@@ -71,7 +86,7 @@ v0.5.1 包含：
 | F-007 card live | 客户端 packet mine：server block air、`items` charger×1；warnings=[]（client 本地 block 可能滞后） |
 | 全量回归 | F-001/F-002/F-004/F-006/F-007 顺序执行全部 `ok=true, warnings=[]` |
 
-## install_probe 的校验
+## v0.5.1 install_probe 校验历史
 
 1. 文件名必须是 `*-dev.jar`；
 2. 用 `jar xf <jar> META-INF/MANIFEST.MF` 解出 manifest；

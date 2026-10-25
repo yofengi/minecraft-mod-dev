@@ -10,6 +10,9 @@ license, plus development scaffolding derived from third-party projects.
   (see the `LICENSE.txt` / upstream project).
 - **Gradle wrapper**: the `gradle/wrapper/gradle-wrapper.jar` files come from the
   Gradle wrapper and are distributed under the Gradle project's license.
+- **NeoForge / ModDevGradle**: the 26.1.2 NeoForge build uses the official
+  NeoForge MDK and ModDevGradle. Their components retain their upstream licenses.
+  The 26.1.2 Forge wrapper comes from the Forge 64.1.5 MDK.
 - **DeepSeek Harness**: the plugin targets DSH and uses its public plugin APIs;
   DSH packages keep their own licenses.
 - **Agent Teams**: the plugin mounts the official DSH experimental Agent Teams

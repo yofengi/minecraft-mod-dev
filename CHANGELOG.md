@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0 fork — 2026-10-25
+
+- 新增 Minecraft 26.1.2 的 Forge 64.1.5 / NeoForge 26.1.2.114 探针，共享 Java 25 实现，保留 Forge 1.20.1 工程。
+- 插件安装校验区分加载器与 MC 版本，识别 PCL 启动参数，预检全部目标并阻止重复探针。
+- 构建、启动及 GameTest 工具支持独立 `javaHome`；场景支持 `minecraftVersion` 和物品 components。
+- 新版探针迁移配方、NBT、输入和截图接口；使用原生 tick 控制，修复逐帧预算、挖掘时序、维度及查询编码问题。
+- 增加插件回归、材料匹配测试、真实服务端/客户端 HTTP 检查脚本和 Windows CI。
+
 ## v0.5.1 — 2026-10-18
 
 - 文档整备：重写 README 封面，新增完整说明书 `docs/MANUAL.md`。

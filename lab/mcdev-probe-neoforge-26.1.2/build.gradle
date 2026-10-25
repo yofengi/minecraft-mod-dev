@@ -1,0 +1,51 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+version = '0.2.0'
+group = 'com.mcdev.probe'
+base.archivesName = 'mcdev_probe-neoforge-26.1.2'
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+sourceSets.main.java.srcDir '../mcdev-probe-26.1.2-common/src/main/java'
+sourceSets {
+    regression {
+        java.srcDir '../mcdev-probe-26.1.2-common/src/test/java'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    runs {
+        client {
+            client()
+            gameDirectory = file('run-client')
+        }
+        server {
+            server()
+            gameDirectory = file('run-server')
+            programArgument '--nogui'
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = file('run-gametest')
+        }
+    }
+    mods {
+        mcdev_probe { sourceSet sourceSets.main }
+    }
+}
+
+tasks.named('jar', Jar) {
+    manifest.attributes('Mcdev-Loader': 'neoforge', 'Mcdev-Minecraft-Version': '26.1.2', 'Mcdev-Mappings': 'official')
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.register('regressionTest', JavaExec) {
+    dependsOn tasks.named('regressionClasses')
+    classpath = sourceSets.regression.runtimeClasspath
+    mainClass = 'com.mcdev.probe.IngredientAssignmentTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn tasks.named('regressionTest') }

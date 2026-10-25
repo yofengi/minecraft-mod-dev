@@ -1,17 +1,13 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { spawn, spawnSync } from 'node:child_process';
 import {
-  copyFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
-  statSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { gradleInvocation, installProbe } from './compatibility.js';
 
 const DEFAULT_PORTS = { server: 39001, client: 39002 };
 const TOKEN = 'mcdev';
@@ -70,47 +66,10 @@ const portParam = {
   description: 'Override the probe port. Defaults: server 39001, client 39002.',
 };
 
-function readJarManifest(jarPath) {
-  const win = process.platform === 'win32';
-  const jar = process.env.JAVA_HOME
-    ? join(process.env.JAVA_HOME, 'bin', win ? 'jar.exe' : 'jar')
-    : 'jar';
-  const dir = mkdtempSync(join(tmpdir(), 'mcdev-jar-'));
-  try {
-    const result = spawnSync(jar, ['xf', jarPath, 'META-INF/MANIFEST.MF'], {
-      cwd: dir,
-      encoding: 'utf8',
-      shell: false,
-      windowsHide: true,
-    });
-    if (result.error || result.status !== 0) {
-      return {
-        checked: false,
-        error: result.error?.message || result.stderr || `jar exit ${result.status}`,
-      };
-    }
-    const manifestPath = join(dir, 'META-INF', 'MANIFEST.MF');
-    if (!existsSync(manifestPath)) {
-      return { checked: false, error: 'MANIFEST.MF missing after extract' };
-    }
-    return { checked: true, text: readFileSync(manifestPath, 'utf8') };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-function runGradle(projectDir, task, timeoutMs = 900000) {
+function runGradle(projectDir, task, timeoutMs = 900000, javaHome) {
   return new Promise((resolve, reject) => {
-    if (!projectDir || !existsSync(projectDir)) {
-      reject(new Error(`projectDir not found: ${projectDir}`));
-      return;
-    }
-    const win = process.platform === 'win32';
-    const child = spawn(win ? 'gradlew.bat' : './gradlew', [task, '--console=plain'], {
-      cwd: projectDir,
-      shell: win,
-      windowsHide: true,
-    });
+    const launch = gradleInvocation(projectDir, task, javaHome);
+    const child = spawn(launch.command, launch.args, launch.options);
     let out = '';
     const cap = 200_000;
     const append = (chunk) => {
@@ -252,22 +211,18 @@ async function connectClient(joinPort) {
   }
 }
 
-async function launchKind(kind, projectDir, timeoutMs) {
+async function launchKind(kind, projectDir, timeoutMs, javaHome) {
+  const task = kind === 'server' ? 'runServer' : 'runClient';
+  const launch = gradleInvocation(projectDir, task, javaHome);
   const port = DEFAULT_PORTS[kind];
   if (await probeStatusOnce(kind, port, 1000)) {
     return { kind, alreadyRunning: true, port };
   }
-  const win = process.platform === 'win32';
-  const task = kind === 'server' ? 'runServer' : 'runClient';
   const logDir = join(projectDir, '.mcdev');
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `launch-${kind}-${Date.now()}.log`);
   const logStream = createWriteStream(logPath, { flags: 'a' });
-  const child = spawn(win ? 'gradlew.bat' : './gradlew', [task, '--console=plain'], {
-    cwd: projectDir,
-    shell: win,
-    windowsHide: true,
-  });
+  const child = spawn(launch.command, launch.args, launch.options);
   const entry = {
     kind,
     child,
@@ -380,6 +335,12 @@ function unquote(value) {
   return s;
 }
 
+function isEscapedQuote(text, index) {
+  let slashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) slashes++;
+  return slashes % 2 === 1;
+}
+
 function splitTopLevel(text, separator) {
   const parts = [];
   let depth = 0;
@@ -388,7 +349,7 @@ function splitTopLevel(text, separator) {
   for (let i = 0; i < text.length; i += 1) {
     const c = text[i];
     if (quote) {
-      if (c === quote && text[i - 1] !== '\\') {
+      if (c === quote && !isEscapedQuote(text, i)) {
         quote = null;
       }
       continue;
@@ -416,7 +377,7 @@ function splitKeyValue(text) {
   for (let i = 0; i < text.length; i += 1) {
     const c = text[i];
     if (quote) {
-      if (c === quote && text[i - 1] !== '\\') {
+      if (c === quote && !isEscapedQuote(text, i)) {
         quote = null;
       }
       continue;
@@ -594,7 +555,41 @@ function mapCardOp(op) {
   return mapping[value] ?? value;
 }
 
-function cardToSteps(card) {
+function usesItemComponents(minecraftVersion) {
+  const parts = typeof minecraftVersion === 'string'
+    ? /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(minecraftVersion) : null;
+  if (!parts) throw new Error('minecraftVersion must be a release version such as 1.20.1 or 26.1.2');
+  const [major, minor, patch] = parts.slice(1).map((part) => Number(part ?? 0));
+  return major > 1 || (major === 1 && (minor > 20 || (minor === 20 && patch >= 5)));
+}
+
+function scenarioItemData(value, minecraftVersion) {
+  for (const key of ['nbt', 'components']) {
+    if (value[key] !== undefined && typeof value[key] !== 'string') {
+      throw new Error(`${key} must be a quoted string containing item data`);
+    }
+  }
+  let components = value.components?.trim();
+  if (components?.startsWith('[') && components.endsWith(']')) components = components.slice(1, -1).trim();
+  if (components && !usesItemComponents(minecraftVersion)) {
+    throw new Error(`components are unsupported on Minecraft ${minecraftVersion}; use legacy nbt or select a modern minecraftVersion`);
+  }
+  if (value.nbt?.trim() && components && splitTopLevel(components, ',').some((entry) => /^\s*!?(?:minecraft:)?custom_data\s*(?:=|$)/.test(entry))) {
+    throw new Error('nbt and components custom_data cannot be combined; put custom data in one field');
+  }
+  return { nbt: value.nbt, components };
+}
+
+function cardItemArgument(value, minecraftVersion) {
+  const data = scenarioItemData(value, minecraftVersion);
+  const nbt = data.nbt?.trim();
+  const compound = nbt ? (nbt.startsWith('{') && nbt.endsWith('}') ? nbt : `{${nbt}}`) : '';
+  if (!usesItemComponents(minecraftVersion)) return `${value.item}${compound}`;
+  const components = [data.components, compound ? `minecraft:custom_data=${compound}` : ''].filter(Boolean).join(',');
+  return `${value.item}${components ? `[${components}]` : ''}`;
+}
+
+function cardToSteps(card, minecraftVersion) {
   const steps = [];
   const warnings = [];
   const commands = card?.setup?.commands;
@@ -621,9 +616,9 @@ function cardToSteps(card) {
       const item = give.item;
       const count = give.count ?? 1;
       if (typeof item === 'string') {
-        steps.push({ type: 'command', side: 'server', cmd: `give ${player} ${item} ${count}` });
+        const tagged = cardItemArgument(give, minecraftVersion);
+        steps.push({ type: 'command', side: 'server', cmd: `give ${player} ${tagged} ${count}` });
         if (give.select) {
-          const tagged = give.nbt ? `${item}{${give.nbt}}` : item;
           steps.push({
             type: 'command',
             side: 'server',
@@ -636,7 +631,7 @@ function cardToSteps(card) {
       const player = select.player ?? 'Dev';
       const count = select.count ?? 1;
       if (typeof select.item === 'string') {
-        const tagged = select.nbt ? `${select.item}{${select.nbt}}` : select.item;
+        const tagged = cardItemArgument(select, minecraftVersion);
         steps.push({
           type: 'command',
           side: 'server',
@@ -818,7 +813,7 @@ function cardToSteps(card) {
     } else if (check.item_bar) {
       const bar = check.item_bar;
       if (typeof bar.item === 'string') {
-        steps.push({ type: 'item', item: bar.item, nbt: bar.nbt });
+        steps.push({ type: 'item', item: bar.item, ...scenarioItemData(bar, minecraftVersion) });
         if (bar.visible !== undefined) {
           steps.push({ type: 'assert', path: 'data.visible', op: 'eq', value: String(bar.visible) });
         }
@@ -861,12 +856,13 @@ export function apply(ctx) {
 
   ctx.tools.register(stringTool(
     'mcdev_prepare',
-    'Start a Forge dev server/client via "gradlew runServer/runClient", wait until the probe is ready, and return PIDs/ports/log paths. Uses the project run directories configured in build.gradle.',
+    'Start a Forge or NeoForge dev server/client via "gradlew runServer/runClient", wait until the probe is ready, and return PIDs/ports/log paths. Uses the project run directories configured in build.gradle.',
     {
+      javaHome: { type: 'string', description: 'Optional absolute JDK directory; applied only to the spawned process. Use JDK 17 for 1.20.1 or JDK 25 for 26.1.2.' },
       projectDir: {
         type: 'string',
         required: true,
-        description: 'Absolute Forge project directory containing gradlew.bat.',
+        description: 'Absolute Forge or NeoForge project directory containing its Gradle wrapper.',
       },
       kind: {
         type: 'string',
@@ -897,14 +893,14 @@ export function apply(ctx) {
       const timeoutMs = Math.max(5000, Math.min(Number(args.timeoutMs) || 180000, 600000));
       const results = [];
       if (args.kind === 'server' || args.kind === 'both') {
-        results.push(await launchKind('server', args.projectDir, timeoutMs));
+        results.push(await launchKind('server', args.projectDir, timeoutMs, args.javaHome));
       }
       if (args.kind === 'client' || args.kind === 'both') {
         if (args.kind === 'both') {
           // Give the server a moment to finish post-start work before the client handshake.
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
-        const client = await launchKind('client', args.projectDir, timeoutMs);
+        const client = await launchKind('client', args.projectDir, timeoutMs, args.javaHome);
         if (args.waitJoin === false) {
           results.push(client);
         } else {
@@ -914,7 +910,7 @@ export function apply(ctx) {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             if (attempt > 0) {
               await new Promise((resolve) => setTimeout(resolve, 2000));
-              current = await launchKind('client', args.projectDir, timeoutMs);
+              current = await launchKind('client', args.projectDir, timeoutMs, args.javaHome);
             }
             await waitForClientReady(Math.min(timeoutMs, 60000));
             await connectClient(args.joinPort);
@@ -1071,12 +1067,14 @@ export function apply(ctx) {
 
   ctx.tools.register(stringTool(
     'mcdev_install_probe',
-    'Install a dev-mapped probe jar into one or more Forge run directories (<runDir>/mods). Validates META-INF/MANIFEST.MF contains "MixinConfigs: mcdev_probe.mixins.json" when the jar tool is available.',
+    'Install a validated Forge or NeoForge probe into <runDir>/mods. Checks loader/version metadata and existing probes before copying; infers targets from instance version JSON when available.',
     {
+      loader: { type: 'string', enum: ['forge', 'neoforge'], description: 'Expected target loader; checked against jar and any instance metadata.' },
+      minecraftVersion: { type: 'string', description: 'Expected target Minecraft version, such as 1.20.1 or 26.1.2.' },
       probeJar: {
         type: 'string',
         required: true,
-        description: 'Absolute path to mcdev_probe-*-dev.jar.',
+        description: 'Absolute path to a legacy Forge *-dev.jar or official-mapped mcdev_probe-{forge|neoforge}-26.1.2-*.jar.',
       },
       runDirs: {
         type: 'array',
@@ -1085,58 +1083,7 @@ export function apply(ctx) {
         items: { type: 'string' },
       },
     },
-    (args) => {
-      const jarPath = args.probeJar;
-      if (!existsSync(jarPath)) {
-        throw new Error(`probe jar not found: ${jarPath}`);
-      }
-      const info = statSync(jarPath);
-      if (!info.isFile()) {
-        throw new Error(`not a file: ${jarPath}`);
-      }
-      const runDirs = Array.isArray(args.runDirs) ? args.runDirs : [];
-      if (runDirs.length === 0) {
-        throw new Error('runDirs must be a non-empty array');
-      }
-      const name = basename(jarPath);
-      if (!/-dev\.jar$/i.test(name)) {
-        throw new Error(
-          'probe jar must be a *-dev.jar (dev-mapped); normal build/reobf jars fail in dev',
-        );
-      }
-      const manifest = readJarManifest(jarPath);
-      const hasMixin = manifest.checked
-        ? /MixinConfigs\s*:\s*mcdev_probe\.mixins\.json/.test(manifest.text)
-        : false;
-      if (manifest.checked && !hasMixin) {
-        throw new Error(
-          'not a dev-mapped probe jar: MANIFEST.MF missing "MixinConfigs: mcdev_probe.mixins.json"',
-        );
-      }
-      const targets = [];
-      const warnings = [];
-      if (!manifest.checked) {
-        warnings.push(`manifest not verified: ${manifest.error}`);
-      }
-      for (const runDir of runDirs) {
-        if (typeof runDir !== 'string' || runDir.trim() === '') {
-          continue;
-        }
-        const modsDir = join(runDir, 'mods');
-        mkdirSync(modsDir, { recursive: true });
-        const dest = join(modsDir, name);
-        copyFileSync(jarPath, dest);
-        targets.push({ runDir, dest });
-      }
-      return JSON.stringify({
-        probeJar: jarPath,
-        size: info.size,
-        manifestChecked: manifest.checked,
-        hasMixinConfigs: hasMixin,
-        targets,
-        warnings,
-      });
-    },
+    (args) => JSON.stringify(installProbe(args)),
   ));
 
   ctx.tools.register(stringTool(
@@ -1169,6 +1116,10 @@ export function apply(ctx) {
     'mcdev_scenario',
     'Execute an ordered list of probe/scenario steps, or translate a card YAML file into steps. Steps: status, command, block, use, ui, click, screenshot, run_dump, wait, assert. Stops at the first failure (ok=false). assert uses path/op/value against the latest data step or an explicit step index.',
     {
+      minecraftVersion: {
+        type: 'string',
+        description: 'Minecraft version for item syntax. Overrides card.minecraftVersion; dryRun defaults to 1.20.1. Live item scenarios infer server status when omitted.',
+      },
       steps: {
         type: 'array',
         description: 'Ordered scenario steps. Omit when using card.',
@@ -1202,6 +1153,7 @@ export function apply(ctx) {
             block: { type: 'string' },
             item: { type: 'string' },
             nbt: { type: 'string' },
+            components: { type: 'string', description: 'Modern native component entries, optionally wrapped in brackets. Unsupported on 1.20.1.' },
             player: { type: 'string' },
             timeoutMs: { type: 'integer' },
             r: { type: 'integer' },
@@ -1220,15 +1172,33 @@ export function apply(ctx) {
     async (args) => {
       let steps = Array.isArray(args.steps) ? args.steps : [];
       let warnings = [];
+      let card;
       if (typeof args.card === 'string' && args.card.trim() !== '') {
         if (!existsSync(args.card)) {
           throw new Error(`card not found: ${args.card}`);
         }
-        const card = parseYaml(readFileSync(args.card, 'utf8'));
-        const translated = cardToSteps(card);
-        steps = translated.steps;
-        warnings = translated.warnings;
+        card = parseYaml(readFileSync(args.card, 'utf8'));
       }
+      let minecraftVersion = args.minecraftVersion ?? card?.minecraftVersion;
+      if (minecraftVersion === undefined && !args.dryRun && (card || steps.some((step) => step?.type === 'item'))) {
+        try {
+          const port = steps.find((step) => step?.type === 'item')?.port;
+          const status = await probeJson('server', '/status', {}, port);
+          minecraftVersion = status?.data?.version;
+        } catch {
+          // Fall back to the legacy syntax.
+        }
+        if (minecraftVersion === undefined) warnings.push('Cannot infer Minecraft version; using 1.20.1. Set minecraftVersion explicitly for modern item syntax.');
+      }
+      minecraftVersion ??= '1.20.1';
+      usesItemComponents(minecraftVersion);
+      if (card) {
+        const translated = cardToSteps(card, minecraftVersion);
+        steps = translated.steps;
+        warnings.push(...translated.warnings);
+      }
+      steps = steps.map((step) => step?.type === 'item'
+        ? { ...step, ...scenarioItemData(step, minecraftVersion) } : step);
       if (steps.length === 0) {
         throw new Error('provide steps or a card with supported steps');
       }
@@ -1236,6 +1206,7 @@ export function apply(ctx) {
         return JSON.stringify({
           ok: true,
           dryRun: true,
+          minecraftVersion,
           card: args.card ?? null,
           warnings,
           steps,
@@ -1342,7 +1313,7 @@ export function apply(ctx) {
               data = await probeJson('server', `/loot?block=${encodeURIComponent(step.block ?? '')}&x=${step.x ?? 0}&y=${step.y ?? 64}&z=${step.z ?? 0}`, {}, step.port);
               break;
             case 'item':
-              data = await probeJson('server', `/item?item=${encodeURIComponent(step.item ?? '')}&nbt=${encodeURIComponent(step.nbt ?? '')}`, {}, step.port);
+              data = await probeJson('server', `/item?item=${encodeURIComponent(step.item ?? '')}&nbt=${encodeURIComponent(step.nbt ?? '')}&components=${encodeURIComponent(step.components ?? '')}`, {}, step.port);
               break;
             case 'use':
               data = await probeJson('client', '/player/use', {
@@ -1395,17 +1366,18 @@ export function apply(ctx) {
             ok: false,
             error: String(error?.message ?? error),
           });
-          return JSON.stringify({ ok: false, failedAt: i, warnings, steps: results });
+          return JSON.stringify({ ok: false, failedAt: i, minecraftVersion, warnings, steps: results });
         }
       }
-      return JSON.stringify({ ok: true, warnings, steps: results });
+      return JSON.stringify({ ok: true, minecraftVersion, warnings, steps: results });
     },
   ));
 
   ctx.tools.register(stringTool(
     'mcdev_build',
-    'Run "gradlew build" in a Minecraft 1.20.1 Forge project directory. Returns JSON {exitCode, tail}. Can take minutes.',
+    'Run "gradlew build" in a Forge or NeoForge project directory. Returns JSON {exitCode, tail}. Can take minutes.',
     {
+      javaHome: { type: 'string', description: 'Optional absolute JDK directory; applied only to the spawned process. Use JDK 17 for 1.20.1 or JDK 25 for 26.1.2.' },
       projectDir: {
         type: 'string',
         required: true,
@@ -1413,7 +1385,7 @@ export function apply(ctx) {
       },
     },
     async (args) => {
-      const result = await runGradle(args.projectDir, 'build', 900000);
+      const result = await runGradle(args.projectDir, 'build', 900000, args.javaHome);
       return JSON.stringify({
         task: 'build',
         exitCode: result.code,
@@ -1424,8 +1396,9 @@ export function apply(ctx) {
 
   ctx.tools.register(stringTool(
     'mcdev_gametest',
-    'Run "gradlew runGameTestServer" in a Minecraft 1.20.1 Forge project directory. Returns JSON {exitCode, summary, tail}. Exit code equals failed required tests.',
+    'Run "gradlew runGameTestServer" in a Forge or NeoForge project directory. Returns JSON {exitCode, summary, tail}. Exit code equals failed required tests.',
     {
+      javaHome: { type: 'string', description: 'Optional absolute JDK directory; applied only to the spawned process. Use JDK 17 for 1.20.1 or JDK 25 for 26.1.2.' },
       projectDir: {
         type: 'string',
         required: true,
@@ -1433,7 +1406,7 @@ export function apply(ctx) {
       },
     },
     async (args) => {
-      const result = await runGradle(args.projectDir, 'runGameTestServer', 900000);
+      const result = await runGradle(args.projectDir, 'runGameTestServer', 900000, args.javaHome);
       const text = result.output;
       const passed = /All (\d+) required tests passed/.exec(text);
       const failed = /(\d+) required tests failed/.exec(text);

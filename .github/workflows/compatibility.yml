@@ -1,0 +1,35 @@
+name: Compatibility checks
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test plugin/minecraft-mod-dev/test/*.test.js
+
+  probe:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        loader: [forge, neoforge]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Build probe and run regression checks
+        working-directory: lab/mcdev-probe-${{ matrix.loader }}-26.1.2
+        run: ./gradlew.bat build --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcdev-probe-${{ matrix.loader }}-26.1.2
+          path: lab/mcdev-probe-${{ matrix.loader }}-26.1.2/build/libs/*.jar

@@ -1,5 +1,11 @@
 # minecraft-mod-dev
 
+> **此 fork：Minecraft 26.1.2 / Forge + NeoForge**
+>
+> 在原版 Forge 1.20.1 工具链之外，新增 Java 25 的 Forge 64.1.5、NeoForge 26.1.2.114 探针，共享同一组 HTTP 工具接口。新版插件为 **0.6.0**。
+>
+> **下载本 fork 的 [v0.6.0 发布包](https://github.com/yofengi/minecraft-mod-dev/releases/tag/v0.6.0)，构建、安装与验证请看 [26.1.2 使用说明](docs/MINECRAFT-26.1.2.md)**。下面保留上游 0.5.1 / Forge 1.20.1 的介绍和历史测试记录；其中的 `*-dev.jar`、Java 17 和 Mixin 限制仅适用于旧版工程。
+
 ![minecraft-mod-dev banner](docs/assets/banner.png)
 
 **让 AI 团队真正“玩到”自己写的 Minecraft 模组。**  
